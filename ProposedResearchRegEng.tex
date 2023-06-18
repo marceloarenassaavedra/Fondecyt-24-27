@@ -20,8 +20,11 @@
 %\usepackage[paperwidth=612pt,paperheight=792pt,top=28pt,right=34pt,bottom=35pt,left=34pt]{geometry}
 \usepackage[top=40pt,right=60pt,bottom=50pt,left=60pt]{geometry}
 
+\usepackage{amsthm}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
 %\author{Felipe Vásquez Moraga}
-%\title{PROPOSED RESEARCH REGULAR 2019}
+\title{Knowledge Retrieval Engine for structured query answering with context-only LLM}
 
 \begin{document}
 
@@ -55,13 +58,127 @@ Aspects related to the proposed research that is included in annexes will not be
 
 }
 
+\maketitle
+
+
+\begin{definition}
+A top-down tree automaton is a tuple $A = (Q, \mathcal{F}, I, \Delta)$, where:
+\begin{itemize}
+  \item $Q$ is a finite set of states,
+  \item $I \subseteq Q$ is a set of initial states.
+  \item $\mathcal{F}$ is a ranked alphabet.
+  \item $\Delta$ is a set of transition rules of the following types:
+  $$q(f(x_1,\cdots,x_n)) \rightarrow f(q_1(x_1),\cdots,q_n(x_n))$$
+  where $n \geq 0, f \in \mathcal{F}, (q_1,\cdots,q_n) \in Q, x \in X$
+\end{itemize}
+The tree language $L(A)$ recognized by $A$ is the set of all ground terms $t \in X$ such that exists $q \in I$:
+$$q(t) \rightarrow^* t$$
+\end{definition}
+
+In the context of knowledge graph we define:
+$$\mathcal{F} = \{c() \mid c \in C\} \cup \{v(,) \mid v \in V\} \cup \epsilon$$
+(bounded by the vocabulary size)
+$I = q[\epsilon][0]$
+
+Then the relevant tree automaton for an input $i$ is defined inductively on the set of Class.
+\\If the information contain in $c$ is irrelevant to $i$ then there is no transition from $c$ and any tree containing $c$ is not admisible. 
+\\If the information contain in the neighbour of $c$ is irrelevant to $i$ then we have the rule 
+$$q[*][0](c(\epsilon)) \rightarrow c(\epsilon)$$
+Assume that the egde $V(c,c_j)$ resp. $V^{-1}(c,c_j)$ uniquely contains relevant information then 
+$$ q[*][0](c(V(x,c_j))) \rightarrow c(V(q[*][1](x),q[*][0](c_j))) \text{ if } c_j \notin * $$
+If more information can be extracted from the neighbour of $c$ we chain using 
+$$ q[*][1](c(V(x,c_k))) \rightarrow c(V(q[*][2](x),q[*][0](c_k))) $$
+If more information can be obtain from the neighbour of $c$ but in different way we use none-determistic rule and chaining:
+\begin{itemize}
+    \item $q[*][2](c(V(x,c_1))) \rightarrow c(V(V(q[*][3](x),q[*,c][0](c_1)))$
+    \item$q[*][2](c(V(x,c_1))) \rightarrow c(V(q[*][3](x),q[*,c][0](c_2)))$
+    \item $q[*][2](c(V(x,c_3))) \rightarrow c(V(q[*][3](x),q[*,c][0](c_3)))$
+\end{itemize}
+Finally if we have extracted all relevant information we add $$q[*][3](c(\epsilon)) \rightarrow c(\epsilon)$$
+
+First task: finding the 'root type' which induce the longest tree. Or beeing able to create edges that go both way without creating cycle (memory ?)
+Idea: defining state and keeping direct path history: $q[\epsilon][0] = I$
+$q[c_i,c_j,c_k][1]$ is the second decision we have taken on the direct path $c_i,c_j,c_k$
+Done i think it is nicer. 
+
+\begin{itemize}
+    \item $Potential(i,q[*][i]) \geq Potential(i,q[*,c][0])$
+    \item $Potential(i,q[*][i]) \geq Potential(i,q[*][i+1])$
+    \item Same for none-determistic but i dont know how.
+\end{itemize}
+
+Assume a knowledge graph with the following classes $candidate, region, tweet, law, age$ and the follwing edges:
+$is\_from(candiate,region), has\_written(candidate,tweet), has\_participated(candidate,law), is\_aged(candidate,age)$.
+Then a possible tree automaton for the query 'What is the opinion about abortion from the candidate in Region metropolitana?' would be:
+\begin{itemize}
+    \item $q[\epsilon][0](Candidate(is\_from(x,y))) \rightarrow Candidate(is\_from(q[\epsilon][1](x),q[candidate][0](y)))$
+    \item $q[\epsilon][1](Candidate(has\_written(x,y))) \rightarrow Candidate(has\_written(q[\epsilon][2](x),q[candidate][1](y)))$
+    \item $q[\epsilon][1](Candidate(has\_participated(x,y))) \rightarrow Candidate(has\_participated(q[\epsilon][2](x),q[candidate][1](y)))$
+    \item $q[\epsilon][2](Candidate(\epsilon)) \rightarrow Candidate(\epsilon)$
+\end{itemize}
+The tree autamota verify that we are checking from where is the candidate.
+Then it ask us to either look at the tweets or the law
+\begin{itemize}
+    \item $q[candidate][0](region(\epsilon)) = region(\epsilon) = region(similarity(i))?$
+\end{itemize}
+We do not have to investigate the neighbour of region, because candidate is already in the path.
+\begin{itemize}
+    \item $q[candidate][1](tweet(\epsilon)) = tweet(\epsilon)= tweet(similarity(i))?$
+\end{itemize}
+\begin{itemize}
+    \item $q[candidate][1](law(\epsilon)) = law(\epsilon)= tweet(similarity(i))?$
+\end{itemize}
+
+Maybe i should add the query directly to the vocabulary so we could path it to the relevant class:
+$$region(\epsilon) \Rightarrow region(similarity(i))$$ I think it is better to make the distinction with the class candidate. 
+
+
+Starting from region ? 
+Starting from tweet ? 
+Starting from law ? 
+In this case they are subset of tree from candidate root. (not always the case though).
+
+
+Using $Potential$ and semantic-similarity score to find the best instance of the tree in the database.
+Enumeration algorithm until we find the maximum for sure. (it is an explore and go-back algorithm as the score can not be bigger than potential we dont have to explore the whole graph).
+
+
+Note that as we are dealing with top-down tree automata, each $q[*][i]$ define a tree pattern, therefore it carry the information about the data we already enquired.
+It is why we can assume $heuristic_classifier(input, q[*][i+1]) \neq  heuristic_classifier(input, q[*][i])$ and therefore we can expect to generate the transition rules of the tree automata autmatically (AI for now).
+
+
+
+
+It is only the first step.
+\begin{itemize}
+    \item Adding more index to fasten exploration ie. the problem of candidate where every one as the same potential -> LSH 
+    \item What about the second best tree? What if the information contain in the second item of the enumerator is the same as the one in the first (same candidate different tweet).
+    \item Adding opperator (Aggregation), Tree automata with arithmetic? Tree transducer? 
+    \item Optimizing batch or paralele evaluation. 
+\end{itemize}
+
+
 \section{Theoretical-conceptual foundations and state of the art}
+\begin{itemize}
+    \item Information retrieval, ? 
+    \item How to increase the confidence in LLM answers while preserving their ease of use.
+    \item How to reduce the cost of using LLM
+\end{itemize}
+
+
+
 \section{Research questions and objectives}
 \begin{itemize}
+    \item Reduce LLM call
     \item How to control the source of information used by LLM
     \item How to increase the confidence in LLM answers while preserving their ease of use.
     \item How to reduce the cost of using LLM
 \end{itemize}
+
+Knowledge retrieval for LLM:
+    Deterministic textualisation ie. navigation / FO -> text 
+
+
 
 \section{Scientific and technological novelty}
 
@@ -81,6 +198,138 @@ Aspects related to the proposed research that is included in annexes will not be
 
 \section{Work plan}
 \section{Background information}
+
+
+
+Considering a graph databases with type.
+tweet + semsim 
+region + semsim 
+candidate + nothing  
+
+Knowledge graph with type / Class. 
+State == Operation sequence Value. 
+Create a text (Determinisitic) -> Path Text
+Select a text (Heurisiticaly)  -> Efficient (Goal is to be as complete as possible)
+    -> Confidence about completeness --> score of lowest text return.
+
+
+
+Feed
+
+
+Easy to create text for a path: Example with naive single element search: CoT
+Using types and operator : ToT 
+Single -> operator -> 
+Value function for feeds (value of the best none returned element) -> Enumerators. 
+
+
+
+Theory: Recognize Equivalent/Same path/state (Same Text). 
+
+A text/information is a tree in the Graph
+To each tree we can attribute a score depending on the query (it gives us a score for the enumerator)
+Then each element fiting the tree is given a proportion of the tree score. 
+    -> element score. 
+Now we enumerate. 
+
+Concurant tree-plan evaluation 
+
+
+
+The goal is populate C until it reach maximal context size. 
+Assuming a query 
+
+'Give me the candidate to the 2023 election from region metropolitana which are older than 45 and pro abortion'.
+
+Rank Candidate
+
+Rank Tweet 
+
+set of tree which maximize information with respect to Q: 
+    minimal perplexity value in the LLM for instance 
+
+A sub tree of the graph.
+The dream is to build this subtree at the same time. 
+
+It is easy to textualize any subtree of a knowledge graph.
+
+-> Previous tree dependency Operation.
+
+Other textusalisation -> Aggregation operation
+Oldest ? 
+
+
+
+So i need to define sub-tree as answers. 
+Then i need to explain that the best answer is the best combinaition of tree which fit into context and that sadly we may not be able to enumerate the tree one by one.
+
+
+Parallele evaluation 
+Batch evaluation 
+
+
+
+Changing the textualisation will not change the one-shot score but may change the cummulative score. 
+
+
+Dynamic index vs static index. 
+
+
+We do not generate 'black' text! 
+ie. find a paper with generative knwoledge extraction.
+
+
+
+
+We assume a knowledge graph datastructure, the task is to retrieve the most relevant explaianable text from the knowledge which fit in the context LLM. 
+Simple Pathes have a straightforward textualisation in knowledge graph.
+Easy to extend to trees. 
+As we want to retain explainability we assume the information retrieve is contactation of text, such as each text is representing a tree.
+
+The most relevant answer is the one minizing or maximixing some value of the LLM: Perplexity or other. 
+
+Formal defintion of best answer.
+
+The goal is to design an algorithm (efficient) which output the best forest. 
+We assume we have an algotrithm to retrieve the best single tree. 
+
+1. Dynamic Querying == Index  vs computed. 
+2. Diversity penality.
+
+Problem too hard because some may be dependent. 
+How to approximate the best answers. 
+
+Optimizing best-tree computation.
+Improving best-tree dependent answers. + optimize.
+
+
+
+
+Expending the tree model. new operators. 
+
+
+Operation language for best single trees. 
+Semantic-similarity is dynamic 
+
+
+
+1. Algotrithm to retrieve the best single tree. 
+What is Gloria Hutt opinion about public education?
+Operators and naive evaluation algorithm 
+Optimization? Batch join. 
+Importance of each operator / edge. 
+
+
+2. 
+
+
+Return set over type (or follow edge) equaly important for question
+Return ordered list over Type semantic / indexed
+
+
+Or / and ? 
+
+
 
 
 
